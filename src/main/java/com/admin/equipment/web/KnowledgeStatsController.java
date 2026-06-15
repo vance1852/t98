@@ -28,6 +28,9 @@ public class KnowledgeStatsController {
             return ResponseEntity.unprocessableEntity()
                     .body(Map.of("detail", "采纳失败，案例不存在或已采纳"));
         }
+        if (req.recommendationLogId() != null) {
+            statsService.markRecommendationAdopted(req.recommendationLogId(), caseId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(adoption);
     }
 
@@ -63,5 +66,5 @@ public class KnowledgeStatsController {
         return statsService.getContributorStats(username);
     }
 
-    public record AdoptRequest(Long workOrderId) {}
+    public record AdoptRequest(Long workOrderId, Long recommendationLogId) {}
 }

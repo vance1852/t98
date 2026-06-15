@@ -1,12 +1,18 @@
 package com.admin.equipment.web;
 
+import com.admin.equipment.model.KnowledgeAttachment;
 import com.admin.equipment.model.KnowledgeCase;
 import com.admin.equipment.service.KnowledgeCaseService;
 import com.admin.equipment.service.KnowledgeStatsService;
 import com.admin.equipment.service.SimilarityService;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -169,16 +175,19 @@ public class KnowledgeCaseController {
                 .map(r -> r.getKnowledgeCase().getId())
                 .collect(Collectors.toList());
 
+        Long recommendationLogId = null;
         if (workOrderId != null) {
-            statsService.logRecommendation(
+            recommendationLogId = statsService.logRecommendation(
                     workOrderId,
                     equipmentType,
                     faultDescription != null ? faultDescription : (keywords != null ? keywords : ""),
                     caseIds,
-                    results.size());
+                    results.size()).getId();
         }
 
-        List<Map<String, Object>> response = new ArrayList<>();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("recommendationLogId", recommendationLogId);
+        List<Map<String, Object>> recommendations = new ArrayList<>();
         for (SimilarityService.SimilarityResult result : results) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("case", result.getKnowledgeCase());
@@ -186,8 +195,9 @@ public class KnowledgeCaseController {
             item.put("matchedTags", result.getMatchedTags());
             item.put("matchedKeywords", result.getMatchedKeywords());
             item.put("scoreBreakdown", result.getScoreBreakdown());
-            response.add(item);
+            recommendations.add(item);
         }
+        response.put("recommendations", recommendations);
 
         return ResponseEntity.ok(response);
     }
@@ -200,6 +210,80 @@ public class KnowledgeCaseController {
     @GetMapping("/ranking/like")
     public List<KnowledgeCase> topLiked(@RequestParam(defaultValue = "10") int limit) {
         return caseService.getTopLiked(limit);
+    }
+
+    @GetMapping("/{id}/attachments")
+    public ResponseEntity<?> listAttachments(@PathVariable Long id) {
+        if (!caseService.findById(id).isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "案例不存在"));
+        }
+        return ResponseEntity.ok(caseService.listAttachments(id));
+    }
+
+    @PostMapping("/{id}/attachments")
+    public ResponseEntity<?> uploadAttachment(@PathVariable Long id,
+                                              @RequestParam("file") MultipartFile file) {
+        if (!caseService.findById(id).isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "案例不存在"));
+        }
+        if (file.isEmpty()) {
+            return ResponseEntity.unprocessableEntity()
+                    .body(Map.of("detail", "文件不能为空"));
+        }
+        try {
+            KnowledgeAttachment attachment = caseService.addAttachment(id, file);
+            return ResponseEntity.status(HttpStatus.CREATED).body(attachment);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("detail", "上传失败: " + e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}/attachments/{attachmentId}")
+    public ResponseEntity<?> deleteAttachment(@PathVariable Long id,
+                                              @PathVariable Long attachmentId) {
+        if (!caseService.findById(id).isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "案例不存在"));
+        }
+        boolean deleted = caseService.deleteAttachment(attachmentId);
+        if (!deleted) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "附件不存在"));
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/attachments/{attachmentId}/download")
+    public ResponseEntity<?> downloadAttachment(@PathVariable Long id,
+                                                @PathVariable Long attachmentId) {
+        if (!caseService.findById(id).isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "案例不存在"));
+        }
+        KnowledgeAttachment attachment = caseService.getAttachment(attachmentId);
+        if (attachment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "附件不存在"));
+        }
+        if (!attachment.getCaseId().equals(id)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("detail", "附件不属于该案例"));
+        }
+        Resource resource = new FileSystemResource(attachment.getFilePath());
+        if (!resource.exists()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("detail", "文件已丢失"));
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        attachment.getMimeType() != null && !attachment.getMimeType().isEmpty()
+                                ? attachment.getMimeType() : "application/octet-stream"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + attachment.getFilename() + "\"")
+                .body(resource);
     }
 
     public record CaseCreateRequest(Long categoryId, String equipmentType, String title,

@@ -33,6 +33,10 @@ public class WorkOrderController {
 
     public record StatusRequest(String status) {}
 
+    public record ResolutionRequest(String causeAnalysis, String solutionSteps,
+                                    String sparePartsUsed, Integer actualMinutes,
+                                    String resolutionSummary) {}
+
     @GetMapping
     public List<WorkOrder> list(@RequestParam(required = false) Long equipmentId,
                                 @RequestParam(required = false) String status) {
@@ -80,5 +84,38 @@ public class WorkOrderController {
             w.setClosedAt(null);
         }
         return ResponseEntity.ok(repo.save(w));
+    }
+
+    @PatchMapping("/{id}/resolution")
+    public ResponseEntity<?> updateResolution(@PathVariable Long id, @RequestBody ResolutionRequest req) {
+        WorkOrder w = repo.findById(id).orElse(null);
+        if (w == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("detail", "工单不存在"));
+        }
+        if (req.causeAnalysis() != null) {
+            w.setCauseAnalysis(req.causeAnalysis());
+        }
+        if (req.solutionSteps() != null) {
+            w.setSolutionSteps(req.solutionSteps());
+        }
+        if (req.sparePartsUsed() != null) {
+            w.setSparePartsUsed(req.sparePartsUsed());
+        }
+        if (req.actualMinutes() != null) {
+            w.setActualMinutes(req.actualMinutes());
+        }
+        if (req.resolutionSummary() != null) {
+            w.setResolutionSummary(req.resolutionSummary());
+        }
+        return ResponseEntity.ok(repo.save(w));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> get(@PathVariable Long id) {
+        WorkOrder w = repo.findById(id).orElse(null);
+        if (w == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("detail", "工单不存在"));
+        }
+        return ResponseEntity.ok(w);
     }
 }

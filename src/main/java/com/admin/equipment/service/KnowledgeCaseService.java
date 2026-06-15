@@ -4,7 +4,14 @@ import com.admin.equipment.model.*;
 import com.admin.equipment.repo.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -179,6 +186,17 @@ public class KnowledgeCaseService {
         kase.setEquipmentType(equipment != null ? equipment.getType() : "");
         kase.setTitle(order.getTitle());
         kase.setFaultSymptom(order.getDescription());
+        kase.setCauseAnalysis(order.getCauseAnalysis() != null ? order.getCauseAnalysis() : "");
+        kase.setSolutionSteps(order.getSolutionSteps() != null ? order.getSolutionSteps() : "");
+        kase.setSpareParts(order.getSparePartsUsed() != null ? order.getSparePartsUsed() : "");
+        kase.setEstimatedMinutes(order.getActualMinutes() != null ? order.getActualMinutes() : 0);
+        if (order.getResolutionSummary() != null && !order.getResolutionSummary().isEmpty()) {
+            if (kase.getSolutionSteps().isEmpty()) {
+                kase.setSolutionSteps(order.getResolutionSummary());
+            }
+        }
+        kase.setKeywords(generateKeywordsFromOrder(order));
+        kase.setTags(kase.getKeywords());
         kase.setSourceWorkOrderId(workOrderId);
         kase.setAuthorUsername(authorUsername != null ? authorUsername : "");
         kase.setStatus("draft");
@@ -190,6 +208,34 @@ public class KnowledgeCaseService {
         kase.setUpdatedAt(LocalDateTime.now());
 
         return caseRepo.save(kase);
+    }
+
+    private String generateKeywordsFromOrder(WorkOrder order) {
+        Set<String> keywords = new LinkedHashSet<>();
+        if (order.getType() != null && !order.getType().isEmpty()) {
+            if ("repair".equals(order.getType())) keywords.add("维修");
+            else if ("maintenance".equals(order.getType())) keywords.add("保养");
+            else if ("inspection".equals(order.getType())) keywords.add("巡检");
+        }
+        if (order.getPriority() != null && !"medium".equals(order.getPriority())) {
+            if ("urgent".equals(order.getPriority())) keywords.add("紧急");
+            else if ("high".equals(order.getPriority())) keywords.add("重要");
+        }
+        String allText = (order.getTitle() != null ? order.getTitle() : "")
+                + " " + (order.getDescription() != null ? order.getDescription() : "")
+                + " " + (order.getCauseAnalysis() != null ? order.getCauseAnalysis() : "")
+                + " " + (order.getResolutionSummary() != null ? order.getResolutionSummary() : "");
+
+        String[] commonTerms = {"故障", "异常", "报警", "停机", "损坏", "泄漏", "堵塞", "磨损",
+                               "过热", "异响", "振动", "过载", "短路", "接地", "缺相",
+                               "压力", "流量", "温度", "电流", "电压", "轴承", "密封",
+                               "滤芯", "滤网", "油泵", "电机", "阀门", "管道"};
+        for (String term : commonTerms) {
+            if (allText.contains(term)) {
+                keywords.add(term);
+            }
+        }
+        return String.join(",", keywords);
     }
 
     @Transactional
@@ -272,5 +318,58 @@ public class KnowledgeCaseService {
     public List<KnowledgeCase> getTopLiked(int limit) {
         return caseRepo.findTop10ByStatusOrderByLikeCountDesc("published")
                 .stream().limit(limit).toList();
+    }
+
+    private static final String ATTACHMENT_DIR = "./data/knowledge-attachments/";
+
+    public List<KnowledgeAttachment> listAttachments(Long caseId) {
+        return attachmentRepo.findByCaseIdOrderByIdAsc(caseId);
+    }
+
+    @Transactional
+    public KnowledgeAttachment addAttachment(Long caseId, MultipartFile file) throws IOException {
+        KnowledgeCase kase = caseRepo.findById(caseId).orElse(null);
+        if (kase == null) {
+            return null;
+        }
+
+        File dir = new File(ATTACHMENT_DIR);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        String storedFilename = System.currentTimeMillis() + "_" +
+                (originalFilename != null ? originalFilename : "file");
+        Path filePath = Paths.get(ATTACHMENT_DIR, storedFilename);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+        KnowledgeAttachment attachment = new KnowledgeAttachment();
+        attachment.setCaseId(caseId);
+        attachment.setFilename(originalFilename != null ? originalFilename : "file");
+        attachment.setFilePath(filePath.toString());
+        attachment.setFileSize(file.getSize());
+        attachment.setMimeType(file.getContentType() != null ? file.getContentType() : "");
+
+        return attachmentRepo.save(attachment);
+    }
+
+    @Transactional
+    public boolean deleteAttachment(Long attachmentId) {
+        KnowledgeAttachment attachment = attachmentRepo.findById(attachmentId).orElse(null);
+        if (attachment == null) {
+            return false;
+        }
+        try {
+            Path filePath = Paths.get(attachment.getFilePath());
+            Files.deleteIfExists(filePath);
+        } catch (IOException e) {
+        }
+        attachmentRepo.deleteById(attachmentId);
+        return true;
+    }
+
+    public KnowledgeAttachment getAttachment(Long attachmentId) {
+        return attachmentRepo.findById(attachmentId).orElse(null);
     }
 }

@@ -40,6 +40,21 @@ public class WorkOrder {
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
 
+    @Column(name = "cause_analysis", columnDefinition = "TEXT")
+    private String causeAnalysis = "";
+
+    @Column(name = "solution_steps", columnDefinition = "TEXT")
+    private String solutionSteps = "";
+
+    @Column(name = "spare_parts_used", columnDefinition = "TEXT")
+    private String sparePartsUsed = "";
+
+    @Column(name = "actual_minutes")
+    private Integer actualMinutes = 0;
+
+    @Column(name = "resolution_summary", columnDefinition = "TEXT")
+    private String resolutionSummary = "";
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getEquipmentId() { return equipmentId; }
@@ -60,4 +75,14 @@ public class WorkOrder {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getClosedAt() { return closedAt; }
     public void setClosedAt(LocalDateTime closedAt) { this.closedAt = closedAt; }
+    public String getCauseAnalysis() { return causeAnalysis; }
+    public void setCauseAnalysis(String causeAnalysis) { this.causeAnalysis = causeAnalysis; }
+    public String getSolutionSteps() { return solutionSteps; }
+    public void setSolutionSteps(String solutionSteps) { this.solutionSteps = solutionSteps; }
+    public String getSparePartsUsed() { return sparePartsUsed; }
+    public void setSparePartsUsed(String sparePartsUsed) { this.sparePartsUsed = sparePartsUsed; }
+    public Integer getActualMinutes() { return actualMinutes; }
+    public void setActualMinutes(Integer actualMinutes) { this.actualMinutes = actualMinutes; }
+    public String getResolutionSummary() { return resolutionSummary; }
+    public void setResolutionSummary(String resolutionSummary) { this.resolutionSummary = resolutionSummary; }
 }
